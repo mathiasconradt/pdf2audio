@@ -1,0 +1,12 @@
+[project]
+name = "pdf2audio"
+version = "0.1.0"
+description = "Convert PDF documents to audio (opus) using local TTS"
+requires-python = ">=3.11"
+dependencies = [
+    "kokoro>=0.9.4",
+    "pymupdf>=1.27.0",
+    "torch>=2.0.0",
+]
+
+
