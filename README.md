@@ -1,5 +1,7 @@
 # pdf2audio
 
+![pdf2audio](splash.png)
+
 Convert PDF documents to audio using fully local, offline TTS. No cloud, no API keys.
 
 **Pipeline:** PDF → text extraction (pymupdf) → speech synthesis (Kokoro TTS) → opus audio (ffmpeg)
