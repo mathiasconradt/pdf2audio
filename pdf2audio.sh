@@ -11,8 +11,43 @@ PDF_BROWSER="${SCRIPT_DIR}/pdf_browser.py"
 VOICE="af_heart"   # American-English female; change e.g. to am_adam, bf_emma, bm_george …
 SPEED=1.0          # speech speed (1.0 = normal)
 
+# --- PARSE ARGS ---
+SELECTED_FILE=""
+OPEN_AFTER=0
+
+show_help() {
+    cat <<EOF
+pdf2audio — Convert PDF to audio (opus) using local TTS
+© 2026 Mathias Conradt • MIT License • https://github.com/mathiasconradt/pdf2audio
+
+Usage:
+  ./pdf2audio.sh [options]
+
+Options:
+  --file=PATH   Path to input PDF file
+                (omit to open interactive file browser)
+  --open        Open the output audio file after conversion
+  --help        Show this help message
+
+Examples:
+  ./pdf2audio.sh
+  ./pdf2audio.sh --file=~/Downloads/paper.pdf
+  ./pdf2audio.sh --file=~/Downloads/paper.pdf --open
+EOF
+    exit 0
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --file=*)   SELECTED_FILE="${arg#--file=}"; SELECTED_FILE="${SELECTED_FILE/#\~/$HOME}" ;;
+        --open)     OPEN_AFTER=1 ;;
+        --help|-h)  show_help ;;
+        *) echo "Unknown option: $arg"; echo "Run ./pdf2audio.sh --help for usage."; exit 1 ;;
+    esac
+done
+
 # --- 1. SELECT FILE ---
-if [ -z "$1" ]; then
+if [ -z "$SELECTED_FILE" ]; then
     BROWSER_TMP=$(mktemp /tmp/pdf_browser_XXXXXX)
     "$PYTHON" "$PDF_BROWSER" . "$BROWSER_TMP"
     BROWSER_EXIT=$?
@@ -22,8 +57,6 @@ if [ -z "$1" ]; then
         echo "No file selected."
         exit 1
     fi
-else
-    SELECTED_FILE="${1/#\~/$HOME}"
 fi
 
 # --- 2. CHECK DEPS ---
@@ -94,4 +127,6 @@ rm -f "$TEMP_TXT" "$TEMP_WAV"
 
 SIZE=$(du -sh "$OUTPUT" 2>/dev/null | cut -f1)
 echo "✨ Done! → ${OUTPUT} (${SIZE})"
-open "$OUTPUT"
+if [ $OPEN_AFTER -eq 1 ]; then
+    open "$OUTPUT"
+fi

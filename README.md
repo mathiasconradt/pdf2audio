@@ -55,12 +55,19 @@ Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 **Direct path:**
 
 ```bash
-./pdf2audio.sh ~/Downloads/paper.pdf
-./pdf2audio.sh "~/Downloads/My Papers/paper.pdf"
+./pdf2audio.sh --file=~/Downloads/paper.pdf
+./pdf2audio.sh --file="~/Downloads/My Papers/paper.pdf" --open
 ```
 
-Output `.opus` file is saved next to the source PDF.  
-File opens automatically in your default player when done.
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--file=PATH` | Path to input PDF (omit to use file browser) |
+| `--open` | Open output audio file after conversion |
+| `--help` | Show usage info |
+
+Output `.opus` saved next to source PDF.
 
 ## Configuration
 
