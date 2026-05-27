@@ -11,6 +11,24 @@ PDF_BROWSER="${SCRIPT_DIR}/pdf_browser.py"
 VOICE="af_heart"   # American-English female; change e.g. to am_adam, bf_emma, bm_george …
 SPEED=1.0          # speech speed (1.0 = normal)
 
+# --- SPINNER ---
+spinner_start() {
+    local msg="$1"
+    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local i=0
+    while true; do
+        printf "\r  %s  %s " "${frames[$((i % 10))]}" "$msg"
+        sleep 0.1
+        ((i++))
+    done &
+    SPINNER_PID=$!
+}
+spinner_stop() {
+    kill "$SPINNER_PID" 2>/dev/null
+    wait "$SPINNER_PID" 2>/dev/null
+    printf "\r\033[2K"
+}
+
 # --- PARSE ARGS ---
 SELECTED_FILE=""
 OPEN_AFTER=0
@@ -93,27 +111,35 @@ OUTPUT="${INPUT_DIR}/${FILENAME_NO_EXT}.opus"
 
 
 # --- 3. EXTRACT TEXT ---
-echo "📄 Extracting text from $FILENAME (stripping footnotes & references)..."
+spinner_start "📄 Extracting text from $FILENAME (stripping footnotes & references)..."
 "$PYTHON" "$PDF_EXTRACT" "$SELECTED_FILE" "$TEMP_TXT"
+EXTRACT_EXIT=$?
+spinner_stop
+echo "📄 Text extracted."
 
-if [ $? -ne 0 ] || [ ! -s "$TEMP_TXT" ]; then
+if [ $EXTRACT_EXIT -ne 0 ] || [ ! -s "$TEMP_TXT" ]; then
     echo "Text extraction failed or PDF is empty/image-only."
     rm -f "$TEMP_TXT"
     exit 1
 fi
 
 # --- 4. TTS → WAV (kokoro) ---
-echo "🗣️  Synthesizing speech (voice: $VOICE, speed: ${SPEED}x)..."
+WORD_COUNT=$(wc -w < "$TEMP_TXT")
+ESTIMATED_MIN=$(echo "$WORD_COUNT / 150" | bc)
+spinner_start "🗣️  Synthesizing speech (voice: $VOICE, speed: ${SPEED}x, ~${ESTIMATED_MIN} min estimated)..."
 "$KOKORO" -i "$TEMP_TXT" -m "$VOICE" -s "$SPEED" -o "$TEMP_WAV"
+TTS_EXIT=$?
+spinner_stop
+echo "🗣️  Speech synthesis done."
 
-if [ ! -f "$TEMP_WAV" ]; then
+if [ $TTS_EXIT -ne 0 ] || [ ! -f "$TEMP_WAV" ]; then
     echo "Speech synthesis failed."
     rm -f "$TEMP_TXT"
     exit 1
 fi
 
 # --- 5. ENCODE OPUS ---
-echo "🎵 Encoding to opus (~24kbps, max compression)..."
+spinner_start "🎵 Encoding to opus (~24kbps, max compression)..."
 ffmpeg -i "$TEMP_WAV" \
     -c:a libopus \
     -b:a 24k \
@@ -121,6 +147,8 @@ ffmpeg -i "$TEMP_WAV" \
     -compression_level 10 \
     -application voip \
     "$OUTPUT" -y -loglevel error
+spinner_stop
+echo "🎵 Encoding done."
 
 # --- 6. CLEANUP ---
 rm -f "$TEMP_TXT" "$TEMP_WAV"
