@@ -1,6 +1,6 @@
 # pdf2audio
 
-![pdf2audio](splash.png)
+![pdf2audio](docs/images/splash.png)
 
 Convert PDF documents to audio using fully local, offline TTS. No cloud, no API keys.
 
@@ -68,6 +68,8 @@ Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 | `--help` | Show usage info |
 
 Output `.opus` saved next to source PDF.
+
+![Screenshot](docs/images/screenshot.png)
 
 ## Configuration
 
