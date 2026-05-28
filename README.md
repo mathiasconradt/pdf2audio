@@ -72,6 +72,8 @@ uv sync
 Navigate with `↑↓`, `Enter` to open folder or select PDF, `q` to quit.  
 Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 
+![Screenshot](docs/images/screenshot.png)
+
 **Direct path:**
 
 ```bash
@@ -88,8 +90,6 @@ Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 | `--help` | Show usage info |
 
 Output `.opus` saved next to source PDF.
-
-![Screenshot](docs/images/screenshot.png)
 
 ## Configuration
 
