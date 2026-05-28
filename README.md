@@ -11,13 +11,33 @@ Convert PDF documents to audio using fully local, offline TTS. No cloud, no API 
 - References/Bibliography section removed
 - Inline citations `[1]`, `(Smith et al., 2023)` removed
 
-## Requirements
+## Install via Homebrew
+
+```bash
+brew tap mathiasconradt/pdf2audio https://github.com/mathiasconradt/pdf2audio
+brew install pdf2audio
+```
+
+Then run from anywhere:
+
+```bash
+pdf2audio
+pdf2audio --file=~/Downloads/paper.pdf --open
+```
+
+> On first run, Kokoro downloads model weights (~300MB) from Hugging Face.
+
+---
+
+## Manual Install
+
+### Requirements
 
 - macOS (uses `open` to play result)
 - [uv](https://docs.astral.sh/uv/) — Python package manager
 - [ffmpeg](https://ffmpeg.org/) — audio encoding
 
-## Install
+## Manual Install
 
 **1. Install system deps**
 

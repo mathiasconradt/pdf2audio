@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release.yml"
+      - "pdf2audio.sh"
+      - "pdf_extract.py"
+      - "pdf_browser.py"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: version
+        run: |
+          current=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          IFS=. read -r major minor patch <<< "$current"
+          next="$major.$minor.$((patch + 1))"
+          sed -i "s/^version = \"$current\"/version = \"$next\"/" pyproject.toml
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          git add pyproject.toml
+          git commit -m "Release v$version"
+          git tag -a "v$version" -m "pdf2audio v$version"
+          git push origin HEAD:main --follow-tags
+
+      - name: Compute tarball SHA256
+        id: sha
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          url="https://github.com/${{ github.repository }}/archive/refs/tags/v${version}.tar.gz"
+          # Wait briefly for GitHub to generate the tarball
+          sleep 5
+          sha=$(curl -sL "$url" | shasum -a 256 | awk '{print $1}')
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew formula
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          sha="${{ steps.sha.outputs.sha256 }}"
+          sed -i "s|/archive/refs/tags/v[^\"]*\.tar\.gz|/archive/refs/tags/v${version}.tar.gz|" Formula/pdf2audio.rb
+          sed -i "s/sha256 \"[^\"]*\"/sha256 \"$sha\"/" Formula/pdf2audio.rb
+
+      - name: Commit formula update
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          git add Formula/pdf2audio.rb
+          git commit -m "Update formula for v$version"
+          git push origin HEAD:main
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          gh release create "v$version" \
+            --title "pdf2audio v$version" \
+            --generate-notes \
+            --verify-tag
