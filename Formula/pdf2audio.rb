@@ -14,13 +14,12 @@ class Pdf2audio < Formula
     libexec.install Dir["*"]
 
     # Create venv explicitly forcing Homebrew's Python 3.12 binary
-    # to bypass both macOS 3.9.6 and any incompatible global Python versions (like 3.14)
     system "uv", "venv", libexec/".venv", "--python", "#{Formula["python@3.12"].opt_bin}/python3.12"
     
-    # Install Python deps via uv inside that venv
-    system "uv", "pip", "install",
-           "--python", libexec/".venv/bin/python",
-           "kokoro>=0.9.4", "pymupdf>=1.27.0", "torch>=2.0.0"
+    # Target libexec directory and tell uv to install the app and its pyproject.toml deps
+    cd libexec do
+      system "uv", "pip", "install", "--python", libexec/".venv/bin/python", "."
+    end
 
     # Patch SCRIPT_DIR references to point to libexec
     inreplace libexec/"pdf2audio.sh",
