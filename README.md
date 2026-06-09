@@ -69,7 +69,8 @@ uv sync
 ./pdf2audio.sh
 ```
 
-Navigate with `↑↓`, `Enter` to open folder or select PDF, `q` to quit.  
+Navigate with `↑↓`, `Enter` to open folder or select PDF, `Esc` to quit.  
+Type letters/digits/_/- to **filter** the file list — `Esc` clears filter, then quits.  
 Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 
 ![Screenshot](docs/images/screenshot.png)
