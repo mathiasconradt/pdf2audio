@@ -122,7 +122,7 @@ def browse(stdscr, start_dir: str, open_after: bool = True) -> tuple[str, bool] 
                         before = line[:pos + 2]  # +2 for "  " prefix
                         match = line[pos + 2:pos + 2 + len(filter_query)]
                         after = line[pos + 2 + len(filter_query):]
-                        stdscr.addstr(row, 0, (before if is_sel else before)[:w-1])
+                        stdscr.addstr(row, 0, before[:w-1])
                         stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
                         stdscr.addstr(row, len(before), match[:w - 1 - len(before)])
                         stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
