@@ -12,7 +12,7 @@ _FILENAME_BLACKLIST = set('/')
 SEARCH_HINT = " type to filter"
 
 
-def browse(stdscr, start_dir: str) -> str | None:
+def browse(stdscr, start_dir: str, open_after: bool = True) -> tuple[str, bool] | None:
     curses.curs_set(0)
     curses.start_color()
     curses.use_default_colors()
@@ -149,21 +149,30 @@ def browse(stdscr, start_dir: str) -> str | None:
         green_attr = curses.color_pair(1) | curses.A_BOLD
         stdscr.move(h - 1, 0)
 
+        open_hint = f" open audio: {'on' if open_after else 'off'}  "
         if filter_query:
             hints = [(" Esc", True), (" clear filter  ", False),
                      (" Backspace", True), (" delete  ", False),
+                     (" Tab", True), (open_hint, False),
                      (" Enter", True), (" select", False)]
         else:
             hints = [(" ↑↓", True), (" navigate  ", False),
                      (" Enter", True), (" select  ", False),
+                     (" Tab", True), (open_hint, False),
                      (" Esc", True), (f" quit{SEARCH_HINT}", False)]
 
+        col = 0
         for text, is_key in hints:
+            remaining = w - 1 - col
+            if remaining <= 0:
+                break
+            visible_text = text[:remaining]
             if is_key:
                 stdscr.attron(green_attr)
             else:
                 stdscr.attroff(curses.color_pair(1))
-            stdscr.addstr(text)
+            stdscr.addstr(visible_text)
+            col += len(visible_text)
 
         stdscr.attroff(green_attr)
 
@@ -171,7 +180,9 @@ def browse(stdscr, start_dir: str) -> str | None:
 
         key = stdscr.getch()
 
-        if key in (curses.KEY_UP, ord('k')):
+        if key == 9:  # Tab
+            open_after = not open_after
+        elif key in (curses.KEY_UP, ord('k')):
             selected = max(0, selected - 1)
         elif key in (curses.KEY_DOWN, ord('j')):
             selected = min(len(items) - 1, selected + 1)
@@ -189,7 +200,7 @@ def browse(stdscr, start_dir: str) -> str | None:
                 scroll = 0
                 filter_query = ""  # Clear filter when navigating into a folder
             else:
-                return path
+                return path, open_after
         elif key == 27:  # ESCAPE — clear filter or quit app
             if filter_query:
                 filter_query = ""
@@ -215,6 +226,7 @@ def browse(stdscr, start_dir: str) -> str | None:
 def main():
     start_dir = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
     out_file = sys.argv[2] if len(sys.argv) > 2 else None
+    open_after = sys.argv[3] != "0" if len(sys.argv) > 3 else True
 
     # Open /dev/tty directly so curses works inside $() subshell
     import io
@@ -230,7 +242,7 @@ def main():
         curses.cbreak()
         scr.keypad(True)
         try:
-            result = browse(scr, start_dir)
+            result = browse(scr, start_dir, open_after)
         finally:
             scr.keypad(False)
             curses.echo()
@@ -242,11 +254,12 @@ def main():
         tty_fd.close()
 
     if result:
+        selected_path, selected_open_after = result
         if out_file:
             with open(out_file, "w") as f:
-                f.write(result)
+                f.write(f"{1 if selected_open_after else 0}\n{selected_path}")
         else:
-            old_stdout.write(result + "\n")
+            old_stdout.write(f"{selected_path}\n")
         sys.exit(0)
     else:
         sys.exit(1)

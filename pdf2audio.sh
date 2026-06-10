@@ -31,7 +31,7 @@ spinner_stop() {
 
 # --- PARSE ARGS ---
 SELECTED_FILE=""
-OPEN_AFTER=0
+OPEN_AFTER=1
 
 show_help() {
     cat <<EOF
@@ -44,7 +44,7 @@ Usage:
 Options:
   --file=PATH   Path to input PDF file
                 (omit to open interactive file browser)
-  --open        Open the output audio file after conversion
+  --open        Open the output audio file after conversion (default on)
   --help        Show this help message
 
 Examples:
@@ -67,9 +67,12 @@ done
 # --- 1. SELECT FILE ---
 if [ -z "$SELECTED_FILE" ]; then
     BROWSER_TMP=$(mktemp /tmp/pdf_browser_XXXXXX)
-    "$PYTHON" "$PDF_BROWSER" . "$BROWSER_TMP"
+    "$PYTHON" "$PDF_BROWSER" . "$BROWSER_TMP" "$OPEN_AFTER"
     BROWSER_EXIT=$?
-    SELECTED_FILE=$(cat "$BROWSER_TMP" 2>/dev/null)
+    if [ -s "$BROWSER_TMP" ]; then
+        OPEN_AFTER=$(sed -n '1p' "$BROWSER_TMP")
+        SELECTED_FILE=$(sed '1d' "$BROWSER_TMP")
+    fi
     rm -f "$BROWSER_TMP"
     if [ $BROWSER_EXIT -ne 0 ] || [ -z "$SELECTED_FILE" ]; then
         echo "No file selected."

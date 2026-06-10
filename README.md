@@ -70,7 +70,7 @@ uv sync
 ./pdf2audio.sh
 ```
 
-Navigate with `↑↓`, `Enter` to open folder or select PDF, `Esc` to quit.  
+Navigate with `↑↓`, `Enter` to open folder or select PDF, `Tab` to toggle opening audio after conversion, `Esc` to quit.  
 Type letters/digits/_/- to **filter** the file list — `Esc` clears filter, then quits.  
 Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 
@@ -88,7 +88,7 @@ Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 | Option | Description |
 |--------|-------------|
 | `--file=PATH` | Path to input PDF (omit to use file browser) |
-| `--open` | Open output audio file after conversion |
+| `--open` | Open output audio file after conversion (default on) |
 | `--help` | Show usage info |
 
 Output `.opus` saved next to source PDF.
