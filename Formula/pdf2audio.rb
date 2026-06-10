@@ -7,6 +7,7 @@ class Pdf2audio < Formula
   license "MIT"
 
   depends_on "ffmpeg"
+  depends_on "poppler"
   depends_on "python@3.12"
   depends_on "uv"
 

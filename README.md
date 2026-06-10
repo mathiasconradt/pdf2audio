@@ -4,7 +4,7 @@
 
 Convert PDF documents to audio using fully local, offline TTS. No cloud, no API keys.
 
-**Pipeline:** PDF → text extraction (pymupdf) → speech synthesis (Kokoro TTS) → opus audio (ffmpeg)
+**Pipeline:** PDF → text extraction (PyMuPDF/pdftotext) → speech synthesis (Kokoro TTS) → opus audio (ffmpeg)
 
 **Smart text cleaning:**
 - Footnotes stripped by font-size detection
@@ -36,13 +36,14 @@ pdf2audio --file=~/Downloads/paper.pdf --open
 - macOS (uses `open` to play result)
 - [uv](https://docs.astral.sh/uv/) — Python package manager
 - [ffmpeg](https://ffmpeg.org/) — audio encoding
+- [poppler](https://poppler.freedesktop.org/) — robust text extraction for printed web PDFs
 
 ## Manual Install
 
 **1. Install system deps**
 
 ```bash
-brew install ffmpeg uv
+brew install ffmpeg poppler uv
 ```
 
 **2. Clone / download this repo**

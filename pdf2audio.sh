@@ -1,6 +1,6 @@
 #!/bin/bash
 # PDF → Audio (opus, ~24kbps — most compressed)
-# Deps: pymupdf (uv pip install pymupdf), ffmpeg, kokoro (uv pip install kokoro)
+# Deps: pymupdf (uv pip install pymupdf), poppler/pdftotext, ffmpeg, kokoro (uv pip install kokoro)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KOKORO="${SCRIPT_DIR}/.venv/bin/kokoro"
