@@ -60,7 +60,9 @@ EOF
 }
 
 is_url() {
-    [[ "$1" =~ ^https?:// ]]
+    local input="$1"
+    [[ "$input" =~ ^https?:// ]]
+    return $?
 }
 
 for arg in "$@"; do

@@ -2,7 +2,7 @@
 name = "pdf2audio"
 version = "0.1.8"
 description = "Convert PDF documents to audio (opus) using local TTS"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "kokoro>=0.9.4",
     "pymupdf>=1.27.0",
@@ -10,4 +10,3 @@ dependencies = [
     "trafilatura>=2.0.0",
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl"
 ]
-
