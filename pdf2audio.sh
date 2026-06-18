@@ -22,11 +22,13 @@ spinner_start() {
         ((i++))
     done &
     SPINNER_PID=$!
+    return 0
 }
 spinner_stop() {
     kill "$SPINNER_PID" 2>/dev/null
     wait "$SPINNER_PID" 2>/dev/null
     printf "\r\033[2K"
+    return 0
 }
 
 # --- PARSE ARGS ---
@@ -52,29 +54,29 @@ Examples:
   ./pdf2audio.sh --file=~/Downloads/paper.pdf
   ./pdf2audio.sh --file=~/Downloads/paper.pdf --open
 EOF
-    exit 0
+    return 0
 }
 
 for arg in "$@"; do
     case "$arg" in
         --file=*)   SELECTED_FILE="${arg#--file=}"; SELECTED_FILE="${SELECTED_FILE/#\~/$HOME}" ;;
         --open)     OPEN_AFTER=1 ;;
-        --help|-h)  show_help ;;
+        --help|-h)  show_help; exit 0 ;;
         *) echo "Unknown option: $arg"; echo "Run ./pdf2audio.sh --help for usage."; exit 1 ;;
     esac
 done
 
 # --- 1. SELECT FILE ---
-if [ -z "$SELECTED_FILE" ]; then
+if [[ -z "$SELECTED_FILE" ]]; then
     BROWSER_TMP=$(mktemp /tmp/pdf_browser_XXXXXX)
     "$PYTHON" "$PDF_BROWSER" . "$BROWSER_TMP" "$OPEN_AFTER"
     BROWSER_EXIT=$?
-    if [ -s "$BROWSER_TMP" ]; then
+    if [[ -s "$BROWSER_TMP" ]]; then
         OPEN_AFTER=$(sed -n '1p' "$BROWSER_TMP")
         SELECTED_FILE=$(sed '1d' "$BROWSER_TMP")
     fi
     rm -f "$BROWSER_TMP"
-    if [ $BROWSER_EXIT -ne 0 ] || [ -z "$SELECTED_FILE" ]; then
+    if [[ $BROWSER_EXIT -ne 0 ]] || [[ -z "$SELECTED_FILE" ]]; then
         echo "No file selected."
         exit 1
     fi
@@ -84,12 +86,12 @@ fi
 for cmd in ffmpeg; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "Missing: $cmd"
-        [ "$cmd" = "ffmpeg" ] && echo "  → brew install ffmpeg"
+        [[ "$cmd" = "ffmpeg" ]] && echo "  → brew install ffmpeg"
         exit 1
     fi
 done
 
-if [ ! -x "$PYTHON" ]; then
+if [[ ! -x "$PYTHON" ]]; then
     echo "Missing: python venv not found at $PYTHON"
     exit 1
 fi
@@ -99,7 +101,7 @@ if ! "$PYTHON" -c "import fitz" &>/dev/null; then
     exit 1
 fi
 
-if [ ! -x "$KOKORO" ]; then
+if [[ ! -x "$KOKORO" ]]; then
     echo "Missing: kokoro not found at $KOKORO"
     echo "  → uv pip install kokoro"
     exit 1
@@ -120,7 +122,7 @@ EXTRACT_EXIT=$?
 spinner_stop
 echo "📄 Text extracted."
 
-if [ $EXTRACT_EXIT -ne 0 ] || [ ! -s "$TEMP_TXT" ]; then
+if [[ $EXTRACT_EXIT -ne 0 ]] || [[ ! -s "$TEMP_TXT" ]]; then
     echo "Text extraction failed or PDF is empty/image-only."
     rm -f "$TEMP_TXT"
     exit 1
@@ -135,7 +137,7 @@ TTS_EXIT=$?
 spinner_stop
 echo "🗣️  Speech synthesis done."
 
-if [ $TTS_EXIT -ne 0 ] || [ ! -f "$TEMP_WAV" ]; then
+if [[ $TTS_EXIT -ne 0 ]] || [[ ! -f "$TEMP_WAV" ]]; then
     echo "Speech synthesis failed."
     rm -f "$TEMP_TXT"
     exit 1
@@ -158,6 +160,6 @@ rm -f "$TEMP_TXT" "$TEMP_WAV"
 
 SIZE=$(du -sh "$OUTPUT" 2>/dev/null | cut -f1)
 echo "✨ Done! → ${OUTPUT} (${SIZE})"
-if [ $OPEN_AFTER -eq 1 ]; then
+if [[ $OPEN_AFTER -eq 1 ]]; then
     open "$OUTPUT"
 fi

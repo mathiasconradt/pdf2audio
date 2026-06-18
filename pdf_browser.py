@@ -4,6 +4,7 @@
 import curses
 import os
 import sys
+from dataclasses import dataclass
 
 # Characters that cannot appear in Unix filenames — forward slash (path separator)
 # Everything else is valid, so we accept any printable key as filter input.
@@ -12,7 +13,40 @@ _FILENAME_BLACKLIST = set('/')
 SEARCH_HINT = " type to filter"
 
 
+@dataclass
+class BrowserState:
+    cwd: str
+    selected: int = 0
+    scroll: int = 0
+    filter_query: str = ""
+    open_after: bool = True
+
+
 def browse(stdscr, start_dir: str, open_after: bool = True) -> tuple[str, bool] | None:
+    _init_curses()
+    state = BrowserState(os.path.realpath(start_dir), open_after=open_after)
+
+    while True:
+        entries_raw = _read_entries(state)
+        if entries_raw is None:
+            continue
+
+        h, _ = stdscr.getmaxyx()
+        list_height = _list_height(h, state.filter_query)
+        items = _visible_items(state.cwd, entries_raw, state.filter_query)
+        state.selected = max(0, min(state.selected, len(items) - 1))
+        state.scroll = _adjust_scroll(state.selected, state.scroll, list_height)
+
+        _render(stdscr, state, items, list_height)
+        action = _handle_key(stdscr.getch(), state, items, list_height)
+
+        if action == "quit":
+            return None
+        if action:
+            return action, state.open_after
+
+
+def _init_curses() -> None:
     curses.curs_set(0)
     curses.start_color()
     curses.use_default_colors()
@@ -23,204 +57,250 @@ def browse(stdscr, start_dir: str, open_after: bool = True) -> tuple[str, bool] 
     curses.init_pair(5, curses.COLOR_GREEN, -1)  # search box highlight
     curses.init_pair(6, curses.COLOR_WHITE, curses.COLOR_BLUE)   # active search
 
-    cwd = os.path.realpath(start_dir)
-    selected = 0
-    scroll = 0
-    filter_query = ""
-    all_items: list[tuple[str, str, bool]] = []
+def _read_entries(state: BrowserState) -> list[str] | None:
+    try:
+        return os.listdir(state.cwd)
+    except PermissionError:
+        state.cwd = os.path.dirname(state.cwd)
+        state.selected = 0
+        state.scroll = 0
+        return None
 
-    while True:
-        stdscr.clear()
-        h, w = stdscr.getmaxyx()
-        # header (4) + search bar (1 when active) + footer (2)
-        search_bar_lines = 1 if filter_query else 0
-        list_height = h - 6 - search_bar_lines
 
-        # Build entries
-        try:
-            entries_raw = os.listdir(cwd)
-        except PermissionError:
-            cwd = os.path.dirname(cwd)
-            all_items = []
-            continue
+def _visible_items(
+    cwd: str, entries_raw: list[str], filter_query: str
+) -> list[tuple[str, str, bool]]:
+    all_items = _directory_items(cwd, entries_raw) + _pdf_items(cwd, entries_raw)
+    if os.path.dirname(cwd) != cwd:
+        all_items.insert(0, ("..", os.path.dirname(cwd), True))
+    if not filter_query:
+        return all_items
+    query = filter_query.lower()
+    return [item for item in all_items if query in item[0].lower()]
 
-        dirs = sorted([e for e in entries_raw if os.path.isdir(os.path.join(cwd, e))
-                       and not e.startswith('.')], key=str.lower)
-        pdfs = sorted([e for e in entries_raw if e.lower().endswith('.pdf')
-                       and os.path.isfile(os.path.join(cwd, e))], key=str.lower)
 
-        all_items = []  # (label, path, is_dir)
-        is_root = os.path.dirname(cwd) == cwd
-        if not is_root:
-            all_items.append(("..", os.path.dirname(cwd), True))
-        for d in dirs:
-            all_items.append((f"[{d}]", os.path.join(cwd, d), True))
-        for f in pdfs:
-            all_items.append((f, os.path.join(cwd, f), False))
+def _directory_items(cwd: str, entries_raw: list[str]) -> list[tuple[str, str, bool]]:
+    dirs = sorted(
+        [
+            name
+            for name in entries_raw
+            if os.path.isdir(os.path.join(cwd, name)) and not name.startswith(".")
+        ],
+        key=str.lower,
+    )
+    return [(f"[{name}]", os.path.join(cwd, name), True) for name in dirs]
 
-        # Apply filter (case-insensitive *query* substring match)
-        if filter_query:
-            items = [
-                (label, path, is_dir) for label, path, is_dir in all_items
-                if filter_query.lower() in label.lower()
-            ]
-        else:
-            items = list(all_items)
 
-        selected = max(0, min(selected, len(items) - 1))
+def _pdf_items(cwd: str, entries_raw: list[str]) -> list[tuple[str, str, bool]]:
+    pdfs = sorted(
+        [
+            name
+            for name in entries_raw
+            if name.lower().endswith(".pdf")
+            and os.path.isfile(os.path.join(cwd, name))
+        ],
+        key=str.lower,
+    )
+    return [(name, os.path.join(cwd, name), False) for name in pdfs]
 
-        # Auto-scroll
-        if selected < scroll:
-            scroll = selected
-        elif selected >= scroll + list_height:
-            scroll = selected - list_height + 1
 
-        # Header
-        header_offset = 0
-        title = " pdf2audio  •  © 2026 Mathias Conradt  •  MIT License  •  https://github.com/mathiasconradt/pdf2audio"
-        stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
-        stdscr.addstr(0 + header_offset, 0, title[:w-1].ljust(w-1))
-        stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
-        stdscr.addstr(1 + header_offset, 0, "─" * (w - 1))
-        path_line = f" 📁 {cwd}"
-        stdscr.addstr(2 + header_offset, 0, path_line[:w-1])
-        stdscr.addstr(3 + header_offset, 0, "─" * (w - 1))
+def _list_height(screen_height: int, filter_query: str) -> int:
+    search_bar_lines = 1 if filter_query else 0
+    return screen_height - 6 - search_bar_lines
 
-        # Search bar (when filter is active)
-        list_start = 4 + search_bar_lines
-        if filter_query:
-            search_text = f" 🔍 {filter_query}" 
-            stdscr.attron(curses.color_pair(6) | curses.A_BOLD)
-            stdscr.addstr(4, 0, search_text[:w-1].ljust(w - 1))
-            stdscr.attroff(curses.color_pair(6) | curses.A_BOLD)
 
-        # Entries
-        if not items:
-            msg = "(no matches)" if filter_query else "(no PDF files or subdirectories here)"
-            stdscr.addstr(list_start, 2, msg)
-        else:
-            matched = len(items) if filter_query else None
-            for i, (label, _, is_dir) in enumerate(items[scroll:scroll + list_height]):
-                row = i + list_start
-                idx = scroll + i
-                is_sel = idx == selected
+def _adjust_scroll(selected: int, scroll: int, list_height: int) -> int:
+    if selected < scroll:
+        return selected
+    if selected >= scroll + list_height:
+        return selected - list_height + 1
+    return scroll
 
-                if is_sel:
-                    attr = curses.color_pair(3)
-                elif is_dir:
-                    attr = curses.color_pair(1)
-                else:
-                    attr = curses.color_pair(2)
 
-                line = f"  {label}"
-                # Highlight matching portion when filtering
-                if filter_query and not is_sel:
-                    lower_label = label.lower()
-                    lower_q = filter_query.lower()
-                    pos = lower_label.find(lower_q)
-                    if pos >= 0:
-                        before = line[:pos + 2]  # +2 for "  " prefix
-                        match = line[pos + 2:pos + 2 + len(filter_query)]
-                        after = line[pos + 2 + len(filter_query):]
-                        stdscr.addstr(row, 0, before[:w-1])
-                        stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
-                        stdscr.addstr(row, len(before), match[:w - 1 - len(before)])
-                        stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
-                        stdscr.addstr(row, len(before) + len(match), after)
-                    else:
-                        stdscr.attron(attr)
-                        stdscr.addstr(row, 0, line[:w-1].ljust(w-1) if is_sel else line[:w-1])
-                        stdscr.attroff(attr)
-                else:
-                    stdscr.attron(attr)
-                    stdscr.addstr(row, 0, line[:w-1].ljust(w-1) if is_sel else line[:w-1])
-                    stdscr.attroff(attr)
+def _render(stdscr, state: BrowserState, items, list_height: int) -> None:
+    stdscr.clear()
+    h, w = stdscr.getmaxyx()
+    list_start = 4 + (1 if state.filter_query else 0)
 
-        # Footer — show result count when filtering
-        footer_row = h - 2
-        if filter_query:
-            msg = f" {len(items)} match{"es" if len(items) != 1 else ""}"
-            stdscr.attron(curses.color_pair(5))
-            stdscr.addstr(footer_row, w - len(msg) - 1, msg)
-            stdscr.attroff(curses.color_pair(5))
-        stdscr.addstr(h - 2, 0, "─" * (w - 1))
-        
-        # Footer with green key hints (matching folder color)
-        green_attr = curses.color_pair(1) | curses.A_BOLD
-        stdscr.move(h - 1, 0)
+    _draw_header(stdscr, state.cwd, w)
+    _draw_search_bar(stdscr, state.filter_query, w)
+    _draw_entries(stdscr, state, items, list_start, list_height, w)
+    _draw_footer(stdscr, state, items, h, w)
 
-        open_hint = f" open audio: {'on' if open_after else 'off'}  "
-        if filter_query:
-            hints = [(" Esc", True), (" clear filter  ", False),
-                     (" Backspace", True), (" delete  ", False),
-                     (" Tab", True), (open_hint, False),
-                     (" Enter", True), (" select", False)]
-        else:
-            hints = [(" ↑↓", True), (" navigate  ", False),
-                     (" Enter", True), (" select  ", False),
-                     (" Tab", True), (open_hint, False),
-                     (" Esc", True), (f" quit{SEARCH_HINT}", False)]
+    stdscr.refresh()
 
-        col = 0
-        for text, is_key in hints:
-            remaining = w - 1 - col
-            if remaining <= 0:
-                break
-            visible_text = text[:remaining]
-            if is_key:
-                stdscr.attron(green_attr)
-            else:
-                stdscr.attroff(curses.color_pair(1))
-            stdscr.addstr(visible_text)
-            col += len(visible_text)
 
-        stdscr.attroff(green_attr)
+def _draw_header(stdscr, cwd: str, width: int) -> None:
+    title = " pdf2audio  •  © 2026 Mathias Conradt  •  MIT License  •  https://github.com/mathiasconradt/pdf2audio"
+    stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
+    stdscr.addstr(0, 0, title[:width - 1].ljust(width - 1))
+    stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
+    stdscr.addstr(1, 0, "─" * (width - 1))
+    stdscr.addstr(2, 0, f" 📁 {cwd}"[:width - 1])
+    stdscr.addstr(3, 0, "─" * (width - 1))
 
-        stdscr.refresh()
 
-        key = stdscr.getch()
+def _draw_search_bar(stdscr, filter_query: str, width: int) -> None:
+    if not filter_query:
+        return
+    stdscr.attron(curses.color_pair(6) | curses.A_BOLD)
+    stdscr.addstr(4, 0, f" 🔍 {filter_query}"[:width - 1].ljust(width - 1))
+    stdscr.attroff(curses.color_pair(6) | curses.A_BOLD)
 
-        if key == 9:  # Tab
-            open_after = not open_after
-        elif key in (curses.KEY_UP, ord('k')):
-            selected = max(0, selected - 1)
-        elif key in (curses.KEY_DOWN, ord('j')):
-            selected = min(len(items) - 1, selected + 1)
-        elif key in (curses.KEY_PPAGE,):  # page up
-            selected = max(0, selected - list_height)
-        elif key in (curses.KEY_NPAGE,):  # page down
-            selected = min(len(items) - 1, selected + list_height)
-        elif key in (curses.KEY_ENTER, ord('\n'), ord('\r')):
-            if not items:
-                continue
-            label, path, is_dir = items[selected]
-            if is_dir:
-                cwd = os.path.realpath(path)
-                selected = 0
-                scroll = 0
-                filter_query = ""  # Clear filter when navigating into a folder
-            else:
-                return path, open_after
-        elif key == 27:  # ESCAPE — clear filter or quit app
-            if filter_query:
-                filter_query = ""
-                selected = 0
-                scroll = 0
-            else:
-                return None
-        elif key == curses.KEY_BACKSPACE or key in (curses.KEY_DC, 127, 8):
-            # Backspace — remove last char from filter
-            if filter_query:
-                filter_query = filter_query[:-1]
-                selected = 0
-                scroll = 0
-        else:
-            # Any other printable character -- add to filter
-            # Accept all chars valid in Unix filenames (everything except /)
-            if 32 <= key < 127 and chr(key) not in _FILENAME_BLACKLIST:
-                filter_query += chr(key)
-                selected = 0
-                scroll = 0
+
+def _draw_entries(stdscr, state: BrowserState, items, list_start: int, height: int, width: int) -> None:
+    if not items:
+        msg = "(no matches)" if state.filter_query else "(no PDF files or subdirectories here)"
+        stdscr.addstr(list_start, 2, msg)
+        return
+
+    visible_items = items[state.scroll:state.scroll + height]
+    for offset, (label, _, is_dir) in enumerate(visible_items):
+        row = offset + list_start
+        is_selected = state.scroll + offset == state.selected
+        _draw_entry(stdscr, row, label, is_dir, is_selected, state.filter_query, width)
+
+
+def _draw_entry(
+    stdscr, row: int, label: str, is_dir: bool, is_selected: bool, filter_query: str, width: int
+) -> None:
+    attr = _entry_attr(is_selected, is_dir)
+    line = f"  {label}"
+    if filter_query and not is_selected and _draw_match(stdscr, row, line, label, filter_query, width):
+        return
+
+    stdscr.attron(attr)
+    visible_line = line[:width - 1].ljust(width - 1) if is_selected else line[:width - 1]
+    stdscr.addstr(row, 0, visible_line)
+    stdscr.attroff(attr)
+
+
+def _entry_attr(is_selected: bool, is_dir: bool) -> int:
+    if is_selected:
+        return curses.color_pair(3)
+    if is_dir:
+        return curses.color_pair(1)
+    return curses.color_pair(2)
+
+
+def _draw_match(stdscr, row: int, line: str, label: str, query: str, width: int) -> bool:
+    pos = label.lower().find(query.lower())
+    if pos < 0:
+        return False
+
+    before = line[:pos + 2]
+    match = line[pos + 2:pos + 2 + len(query)]
+    after = line[pos + 2 + len(query):]
+    stdscr.addstr(row, 0, before[:width - 1])
+    stdscr.attron(curses.color_pair(5) | curses.A_BOLD)
+    stdscr.addstr(row, len(before), match[:width - 1 - len(before)])
+    stdscr.attroff(curses.color_pair(5) | curses.A_BOLD)
+    stdscr.addstr(row, len(before) + len(match), after[:width - 1 - len(before) - len(match)])
+    return True
+
+
+def _draw_footer(stdscr, state: BrowserState, items, height: int, width: int) -> None:
+    footer_row = height - 2
+    if state.filter_query:
+        msg = f" {len(items)} match{'es' if len(items) != 1 else ''}"
+        stdscr.attron(curses.color_pair(5))
+        stdscr.addstr(footer_row, width - len(msg) - 1, msg)
+        stdscr.attroff(curses.color_pair(5))
+    stdscr.addstr(footer_row, 0, "─" * (width - 1))
+    _draw_hints(stdscr, state, height, width)
+
+
+def _draw_hints(stdscr, state: BrowserState, height: int, width: int) -> None:
+    green_attr = curses.color_pair(1) | curses.A_BOLD
+    stdscr.move(height - 1, 0)
+    col = 0
+
+    for text, is_key in _hints(state):
+        remaining = width - 1 - col
+        if remaining <= 0:
+            break
+        visible_text = text[:remaining]
+        stdscr.attron(green_attr) if is_key else stdscr.attroff(curses.color_pair(1))
+        stdscr.addstr(visible_text)
+        col += len(visible_text)
+
+    stdscr.attroff(green_attr)
+
+
+def _hints(state: BrowserState) -> list[tuple[str, bool]]:
+    open_hint = f" open audio: {'on' if state.open_after else 'off'}  "
+    if state.filter_query:
+        return [
+            (" Esc", True), (" clear filter  ", False),
+            (" Backspace", True), (" delete  ", False),
+            (" Tab", True), (open_hint, False),
+            (" Enter", True), (" select", False),
+        ]
+    return [
+        (" ↑↓", True), (" navigate  ", False),
+        (" Enter", True), (" select  ", False),
+        (" Tab", True), (open_hint, False),
+        (" Esc", True), (f" quit{SEARCH_HINT}", False),
+    ]
+
+
+def _handle_key(key: int, state: BrowserState, items, list_height: int) -> str | None:
+    if key == 9:
+        state.open_after = not state.open_after
+    elif key in (curses.KEY_UP, ord("k")):
+        state.selected = max(0, state.selected - 1)
+    elif key in (curses.KEY_DOWN, ord("j")):
+        state.selected = min(len(items) - 1, state.selected + 1)
+    elif key in (curses.KEY_PPAGE,):
+        state.selected = max(0, state.selected - list_height)
+    elif key in (curses.KEY_NPAGE,):
+        state.selected = min(len(items) - 1, state.selected + list_height)
+    elif key in (curses.KEY_ENTER, ord("\n"), ord("\r")):
+        return _select_item(state, items)
+    elif key == 27:
+        return _escape(state)
+    elif key == curses.KEY_BACKSPACE or key in (curses.KEY_DC, 127, 8):
+        _backspace(state)
+    else:
+        _append_filter_char(key, state)
+    return None
+
+
+def _select_item(state: BrowserState, items) -> str | None:
+    if not items:
+        return None
+    _, path, is_dir = items[state.selected]
+    if not is_dir:
+        return path
+    state.cwd = os.path.realpath(path)
+    _reset_selection(state)
+    state.filter_query = ""
+    return None
+
+
+def _escape(state: BrowserState) -> str | None:
+    if not state.filter_query:
+        return "quit"
+    state.filter_query = ""
+    _reset_selection(state)
+    return None
+
+
+def _backspace(state: BrowserState) -> None:
+    if state.filter_query:
+        state.filter_query = state.filter_query[:-1]
+        _reset_selection(state)
+
+
+def _append_filter_char(key: int, state: BrowserState) -> None:
+    if 32 <= key < 127 and chr(key) not in _FILENAME_BLACKLIST:
+        state.filter_query += chr(key)
+        _reset_selection(state)
+
+
+def _reset_selection(state: BrowserState) -> None:
+    state.selected = 0
+    state.scroll = 0
 
 
 def main():

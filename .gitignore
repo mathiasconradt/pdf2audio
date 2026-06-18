@@ -1,5 +1,6 @@
 codex_session_id
 pi_session_id
+.codex/
 
 # Python
 .venv/

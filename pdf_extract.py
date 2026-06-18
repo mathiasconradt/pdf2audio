@@ -18,23 +18,31 @@ import fitz  # pymupdf
 END_HEADING = re.compile(
     r"^(?:References|Bibliography|Works Cited|Footnotes|REFERENCES|BIBLIOGRAPHY|FOOTNOTES)\s*$"
 )
+NUMERIC_CITATION = re.compile(r"\[\d+(?:[,\-]\s*\d+)*\]")
+ET_AL_CITATION = re.compile(r"\([A-Z][a-z]+(?:\s+et\s+al\.)?,?\s*\d{4}\)")
+AUTHORS_YEAR_CITATION = re.compile(
+    r"\([A-Z][a-z]+(?:\s*[,&]\s*[A-Z][a-z]+)+,?\s*\d{4}\)"
+)
+SUPERSCRIPT_DIGITS = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]+")
 
 
 def get_body_size(doc: fitz.Document) -> float:
     size_counts: dict[float, int] = {}
-    for page in doc:
-        for block in page.get_text("dict")["blocks"]:
-            if block["type"] != 0:
-                continue
-            for line in block["lines"]:
-                for span in line["spans"]:
-                    size = round(span["size"], 1)
-                    text = span["text"].strip()
-                    if len(text) > 10:
-                        size_counts[size] = size_counts.get(size, 0) + len(text)
+    for span in _text_spans(doc):
+        size = round(span["size"], 1)
+        text = span["text"].strip()
+        if len(text) > 10:
+            size_counts[size] = size_counts.get(size, 0) + len(text)
     if not size_counts:
         return 10.0
     return max(size_counts, key=lambda s: size_counts[s])
+
+
+def _text_spans(doc: fitz.Document):
+    for page in doc:
+        for block in _page_text_blocks(page):
+            for line in block["lines"]:
+                yield from line["spans"]
 
 
 def extract_clean_text(pdf_path: str) -> str:
@@ -73,47 +81,57 @@ def _extract_with_pdftotext(pdf_path: str) -> str:
 
 
 def _extract_with_pymupdf(pdf_path: str) -> str:
-    doc = fitz.open(pdf_path)
-    body_size = get_body_size(doc)
-    footnote_threshold = body_size - 1.5
+    with fitz.open(pdf_path) as doc:
+        footnote_threshold = get_body_size(doc) - 1.5
+        paragraphs = []
 
-    paragraphs = []
+        for page in doc:
+            for block in _page_text_blocks(page):
+                if _is_end_heading(block):
+                    return "\n\n".join(paragraphs)
 
-    for page in doc:
-        blocks = page.get_text("dict")["blocks"]
-        for block in blocks:
-            if block["type"] != 0:
-                continue
+                paragraph = _block_paragraph(
+                    block, page.rect.height, footnote_threshold
+                )
+                if paragraph:
+                    paragraphs.append(paragraph)
 
-            # Detect end-matter heading — stop here.
-            first_line_text = ""
-            if block["lines"]:
-                for span in block["lines"][0]["spans"]:
-                    first_line_text += span["text"]
-            if END_HEADING.match(first_line_text.strip()):
-                doc.close()
-                return "\n\n".join(paragraphs)
+        return "\n\n".join(paragraphs)
 
-            # Skip small-font footnote lines only near the page bottom. Printed
-            # web pages often use larger headlines than body text.
-            block_lines = []
-            for line in block["lines"]:
-                line_text = ""
-                is_footnote = False
-                line_y = line["bbox"][1]
-                near_page_bottom = line_y > page.rect.height * 0.72
-                for span in line["spans"]:
-                    if near_page_bottom and round(span["size"], 1) < footnote_threshold:
-                        is_footnote = True
-                        break
-                    line_text += span["text"]
-                if not is_footnote and line_text.strip():
-                    block_lines.append(line_text.strip())
-            if block_lines:
-                paragraphs.append(" ".join(block_lines))
 
-    doc.close()
-    return "\n\n".join(paragraphs)
+def _page_text_blocks(page):
+    return [
+        block
+        for block in page.get_text("dict")["blocks"]
+        if block["type"] == 0
+    ]
+
+
+def _is_end_heading(block) -> bool:
+    if not block["lines"]:
+        return False
+    first_line_text = "".join(span["text"] for span in block["lines"][0]["spans"])
+    return bool(END_HEADING.match(first_line_text.strip()))
+
+
+def _block_paragraph(block, page_height: float, footnote_threshold: float) -> str:
+    lines = [
+        line_text
+        for line in block["lines"]
+        if (line_text := _line_text(line, page_height, footnote_threshold))
+    ]
+    return " ".join(lines)
+
+
+def _line_text(line, page_height: float, footnote_threshold: float) -> str:
+    near_page_bottom = line["bbox"][1] > page_height * 0.72
+    if near_page_bottom and _has_small_span(line, footnote_threshold):
+        return ""
+    return "".join(span["text"] for span in line["spans"]).strip()
+
+
+def _has_small_span(line, footnote_threshold: float) -> bool:
+    return any(round(span["size"], 1) < footnote_threshold for span in line["spans"])
 
 
 def _word_count(text: str) -> int:
@@ -123,11 +141,12 @@ def _word_count(text: str) -> int:
 def _clean(text: str) -> str:
     text = _strip_end_matter(text)
     # Inline citations [1], [2,3], [1-5]
-    text = re.sub(r"\[\d+(?:[,\-]\s*\d+)*\]", "", text)
+    text = NUMERIC_CITATION.sub("", text)
     # (Author et al., 2023) / (Author, 2023)
-    text = re.sub(r"\([A-Z][a-z]+(?:\s+et\s+al\.)?(?:\s*[,&]\s*[A-Z][a-z]+)*,?\s*\d{4}\)", "", text)
+    text = ET_AL_CITATION.sub("", text)
+    text = AUTHORS_YEAR_CITATION.sub("", text)
     # Superscript unicode digits
-    text = re.sub(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]+", "", text)
+    text = SUPERSCRIPT_DIGITS.sub("", text)
     # Whitespace
     text = text.replace("\f", "\n")
     text = re.sub(r"\n{3,}", "\n\n", text)
