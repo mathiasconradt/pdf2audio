@@ -1,8 +1,8 @@
 class Pdf2audio < Formula
   desc "Convert PDF documents to audio (opus) using local TTS"
   homepage "https://github.com/mathiasconradt/pdf2audio"
-  url "https://github.com/mathiasconradt/pdf2audio/archive/refs/tags/v0.1.7.tar.gz"
-  sha256 "444a07f8ce9796c531edceb133b074fa98d41154e5f39abb4f3822f37886b6ed"
+  url "https://github.com/mathiasconradt/pdf2audio/archive/refs/tags/v0.1.8.tar.gz"
+  sha256 "cc2887cae8c206d4e6fa37dccde305d69f9f5f2638b17626c5ee7429e05d3354"
   head "https://github.com/mathiasconradt/pdf2audio.git", branch: "main"
   license "MIT"
 
