@@ -4,7 +4,7 @@
 
 Convert PDF documents to audio using fully local, offline TTS. No cloud, no API keys.
 
-**Pipeline:** PDF → text extraction (PyMuPDF/pdftotext) → speech synthesis (Kokoro TTS) → opus audio (ffmpeg)
+**Pipeline:** PDF/URL → text extraction (PyMuPDF/pdftotext/trafilatura) → speech synthesis (Kokoro TTS) → opus audio (ffmpeg)
 
 **Smart text cleaning:**
 - Footnotes stripped by font-size detection
@@ -83,11 +83,22 @@ Folders shown as `[name]` at top, PDF files below. `[..]` to go up.
 ./pdf2audio.sh --file="~/Downloads/My Papers/paper.pdf" --open
 ```
 
+**URL input:**
+
+```bash
+./pdf2audio.sh --file=https://example.com/paper.pdf
+./pdf2audio.sh --file=https://example.com/blog/article
+```
+
+PDF URLs are downloaded to a private temp file before extraction. HTML URLs are
+converted with deterministic readability extraction (`trafilatura`, with a basic
+HTML fallback) to avoid navigation, footer, and ad-like page chrome where possible.
+
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--file=PATH` | Path to input PDF (omit to use file browser) |
+| `--file=PATH` | Path to input PDF or `http(s)` URL (omit to use file browser) |
 | `--open` | Open output audio file after conversion (default on) |
 | `--help` | Show usage info |
 
@@ -115,4 +126,5 @@ SPEED=1.0          # 1.0 = normal, 1.5 = faster
 
 - Processing time scales with PDF length — expect ~1 min per 10 pages on CPU (no GPU needed)
 - Image-only / scanned PDFs will fail — text layer required
+- JS-rendered, paywalled, or heavily interactive pages may not extract cleanly from URL input
 - Output is ~24kbps opus, highly compressed (~1MB per hour of audio)

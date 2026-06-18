@@ -7,6 +7,7 @@ KOKORO="${SCRIPT_DIR}/.venv/bin/kokoro"
 PYTHON="${SCRIPT_DIR}/.venv/bin/python"
 PDF_EXTRACT="${SCRIPT_DIR}/pdf_extract.py"
 PDF_BROWSER="${SCRIPT_DIR}/pdf_browser.py"
+URL_EXTRACT="${SCRIPT_DIR}/url_extract.py"
 
 VOICE="af_heart"   # American-English female; change e.g. to am_adam, bf_emma, bm_george …
 SPEED=1.0          # speech speed (1.0 = normal)
@@ -44,7 +45,7 @@ Usage:
   ./pdf2audio.sh [options]
 
 Options:
-  --file=PATH   Path to input PDF file
+  --file=PATH   Path to input PDF file or http(s) URL
                 (omit to open interactive file browser)
   --open        Open the output audio file after conversion (default on)
   --help        Show this help message
@@ -52,9 +53,14 @@ Options:
 Examples:
   ./pdf2audio.sh
   ./pdf2audio.sh --file=~/Downloads/paper.pdf
+  ./pdf2audio.sh --file=https://example.com/article
   ./pdf2audio.sh --file=~/Downloads/paper.pdf --open
 EOF
     return 0
+}
+
+is_url() {
+    [[ "$1" =~ ^https?:// ]]
 }
 
 for arg in "$@"; do
@@ -107,21 +113,46 @@ if [[ ! -x "$KOKORO" ]]; then
     exit 1
 fi
 
-INPUT_DIR=$(dirname "$SELECTED_FILE")
-FILENAME=$(basename -- "$SELECTED_FILE")
-FILENAME_NO_EXT="${FILENAME%.*}"
 TEMP_DIR=$(mktemp -d -t pdf2audio_XXXXXX)
+SOURCE_KIND="pdf"
+
+if is_url "$SELECTED_FILE"; then
+    spinner_start "🌐 Fetching URL..."
+    URL_RESULT=$("$PYTHON" "$URL_EXTRACT" "$SELECTED_FILE" "$TEMP_DIR")
+    URL_EXIT=$?
+    spinner_stop
+    if [[ $URL_EXIT -ne 0 ]]; then
+        echo "$URL_RESULT"
+        rmdir "$TEMP_DIR" 2>/dev/null || true
+        exit 1
+    fi
+
+    IFS=$'\t' read -r SOURCE_KIND SELECTED_FILE FILENAME_NO_EXT <<< "$URL_RESULT"
+    INPUT_DIR="$PWD"
+    FILENAME="${FILENAME_NO_EXT}.${SOURCE_KIND}"
+else
+    INPUT_DIR=$(dirname "$SELECTED_FILE")
+    FILENAME=$(basename -- "$SELECTED_FILE")
+    FILENAME_NO_EXT="${FILENAME%.*}"
+fi
+
 TEMP_TXT="${TEMP_DIR}/${FILENAME_NO_EXT}.txt"
 TEMP_WAV="${TEMP_DIR}/${FILENAME_NO_EXT}.wav"
 OUTPUT="${INPUT_DIR}/${FILENAME_NO_EXT}.opus"
 
 
 # --- 3. EXTRACT TEXT ---
-spinner_start "📄 Extracting text from $FILENAME (stripping footnotes & references)..."
-"$PYTHON" "$PDF_EXTRACT" "$SELECTED_FILE" "$TEMP_TXT"
-EXTRACT_EXIT=$?
-spinner_stop
-echo "📄 Text extracted."
+if [[ "$SOURCE_KIND" = "text" ]]; then
+    TEMP_TXT="$SELECTED_FILE"
+    EXTRACT_EXIT=0
+    echo "🌐 Web text extracted."
+else
+    spinner_start "📄 Extracting text from $FILENAME (stripping footnotes & references)..."
+    "$PYTHON" "$PDF_EXTRACT" "$SELECTED_FILE" "$TEMP_TXT"
+    EXTRACT_EXIT=$?
+    spinner_stop
+    echo "📄 Text extracted."
+fi
 
 if [[ $EXTRACT_EXIT -ne 0 ]] || [[ ! -s "$TEMP_TXT" ]]; then
     echo "Text extraction failed or PDF is empty/image-only."

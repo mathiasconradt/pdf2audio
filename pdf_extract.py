@@ -179,7 +179,7 @@ def _validated_output_path(path_arg: str) -> str:
     path = Path(path_arg).expanduser()
     parent = path.parent.resolve(strict=True)
     output_path = parent / path.name
-    if parent not in _allowed_temp_roots():
+    if not _is_inside_allowed_temp_root(parent):
         raise ValueError(f"Output path must be in a temp directory: {path_arg}")
     if output_path.suffix.lower() != ".txt":
         raise ValueError(f"Output path must be a .txt file: {path_arg}")
@@ -190,6 +190,10 @@ def _validated_output_path(path_arg: str) -> str:
 
 def _allowed_temp_roots() -> set[Path]:
     return {Path(tempfile.gettempdir()).resolve(strict=True)}
+
+
+def _is_inside_allowed_temp_root(path: Path) -> bool:
+    return any(path == root or root in path.parents for root in _allowed_temp_roots())
 
 
 if __name__ == "__main__":
