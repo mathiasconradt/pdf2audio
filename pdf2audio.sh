@@ -68,7 +68,7 @@ done
 
 # --- 1. SELECT FILE ---
 if [[ -z "$SELECTED_FILE" ]]; then
-    BROWSER_TMP=$(mktemp /tmp/pdf_browser_XXXXXX)
+    BROWSER_TMP=$(mktemp -t pdf_browser_XXXXXX)
     "$PYTHON" "$PDF_BROWSER" . "$BROWSER_TMP" "$OPEN_AFTER"
     BROWSER_EXIT=$?
     if [[ -s "$BROWSER_TMP" ]]; then
@@ -110,8 +110,9 @@ fi
 INPUT_DIR=$(dirname "$SELECTED_FILE")
 FILENAME=$(basename -- "$SELECTED_FILE")
 FILENAME_NO_EXT="${FILENAME%.*}"
-TEMP_TXT="/tmp/${FILENAME_NO_EXT}.txt"
-TEMP_WAV="/tmp/${FILENAME_NO_EXT}.wav"
+TEMP_DIR=$(mktemp -d -t pdf2audio_XXXXXX)
+TEMP_TXT="${TEMP_DIR}/${FILENAME_NO_EXT}.txt"
+TEMP_WAV="${TEMP_DIR}/${FILENAME_NO_EXT}.wav"
 OUTPUT="${INPUT_DIR}/${FILENAME_NO_EXT}.opus"
 
 
@@ -124,7 +125,8 @@ echo "📄 Text extracted."
 
 if [[ $EXTRACT_EXIT -ne 0 ]] || [[ ! -s "$TEMP_TXT" ]]; then
     echo "Text extraction failed or PDF is empty/image-only."
-    rm -f "$TEMP_TXT"
+    rm -f "$TEMP_TXT" "$TEMP_WAV"
+    rmdir "$TEMP_DIR" 2>/dev/null || true
     exit 1
 fi
 
@@ -139,7 +141,8 @@ echo "🗣️  Speech synthesis done."
 
 if [[ $TTS_EXIT -ne 0 ]] || [[ ! -f "$TEMP_WAV" ]]; then
     echo "Speech synthesis failed."
-    rm -f "$TEMP_TXT"
+    rm -f "$TEMP_TXT" "$TEMP_WAV"
+    rmdir "$TEMP_DIR" 2>/dev/null || true
     exit 1
 fi
 
@@ -157,6 +160,7 @@ echo "🎵 Encoding done."
 
 # --- 6. CLEANUP ---
 rm -f "$TEMP_TXT" "$TEMP_WAV"
+rmdir "$TEMP_DIR" 2>/dev/null || true
 
 SIZE=$(du -sh "$OUTPUT" 2>/dev/null | cut -f1)
 echo "✨ Done! → ${OUTPUT} (${SIZE})"

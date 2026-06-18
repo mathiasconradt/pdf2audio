@@ -4,7 +4,9 @@
 import curses
 import os
 import sys
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 # Characters that cannot appear in Unix filenames — forward slash (path separator)
 # Everything else is valid, so we accept any printable key as filter input.
@@ -303,9 +305,34 @@ def _reset_selection(state: BrowserState) -> None:
     state.scroll = 0
 
 
+def _validated_browser_output_path(path_arg: str) -> str:
+    path = Path(path_arg).expanduser()
+    parent = path.parent.resolve(strict=True)
+    output_path = parent / path.name
+    if parent not in _allowed_temp_roots() or not output_path.name.startswith(
+        "pdf_browser_"
+    ):
+        raise ValueError(f"Invalid browser output path: {path_arg}")
+    if output_path.exists() and not output_path.is_file():
+        raise ValueError(f"Browser output path is not a file: {path_arg}")
+    return str(output_path)
+
+
+def _allowed_temp_roots() -> set[Path]:
+    return {Path(tempfile.gettempdir()).resolve(strict=True)}
+
+
 def main():
     start_dir = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
-    out_file = sys.argv[2] if len(sys.argv) > 2 else None
+    try:
+        out_file = (
+            _validated_browser_output_path(sys.argv[2])
+            if len(sys.argv) > 2
+            else None
+        )
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
     open_after = sys.argv[3] != "0" if len(sys.argv) > 3 else True
 
     # Open /dev/tty directly so curses works inside $() subshell

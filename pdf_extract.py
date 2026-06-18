@@ -12,6 +12,8 @@ import sys
 import re
 import shutil
 import subprocess
+import tempfile
+from pathlib import Path
 import fitz  # pymupdf
 
 
@@ -46,6 +48,7 @@ def _text_spans(doc: fitz.Document):
 
 
 def extract_clean_text(pdf_path: str) -> str:
+    pdf_path = _validated_pdf_path(pdf_path)
     pymupdf_text = _extract_with_pymupdf(pdf_path)
     pdftotext_text = _extract_with_pdftotext(pdf_path)
 
@@ -63,6 +66,7 @@ def _extract_with_pdftotext(pdf_path: str) -> str:
     if not shutil.which("pdftotext"):
         return ""
 
+    pdf_path = _validated_pdf_path(pdf_path)
     try:
         result = subprocess.run(
             ["pdftotext", "-enc", "UTF-8", pdf_path, "-"],
@@ -81,6 +85,7 @@ def _extract_with_pdftotext(pdf_path: str) -> str:
 
 
 def _extract_with_pymupdf(pdf_path: str) -> str:
+    pdf_path = _validated_pdf_path(pdf_path)
     with fitz.open(pdf_path) as doc:
         footnote_threshold = get_body_size(doc) - 1.5
         paragraphs = []
@@ -163,17 +168,48 @@ def _strip_end_matter(text: str) -> str:
     return "\n".join(kept_lines)
 
 
+def _validated_pdf_path(path_arg: str) -> str:
+    path = Path(path_arg).expanduser().resolve(strict=True)
+    if not path.is_file() or path.suffix.lower() != ".pdf":
+        raise ValueError(f"Not a readable PDF file: {path_arg}")
+    return str(path)
+
+
+def _validated_output_path(path_arg: str) -> str:
+    path = Path(path_arg).expanduser()
+    parent = path.parent.resolve(strict=True)
+    output_path = parent / path.name
+    if parent not in _allowed_temp_roots():
+        raise ValueError(f"Output path must be in a temp directory: {path_arg}")
+    if output_path.suffix.lower() != ".txt":
+        raise ValueError(f"Output path must be a .txt file: {path_arg}")
+    if output_path.exists() and not output_path.is_file():
+        raise ValueError(f"Output path is not a file: {path_arg}")
+    return str(output_path)
+
+
+def _allowed_temp_roots() -> set[Path]:
+    return {Path(tempfile.gettempdir()).resolve(strict=True)}
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print(f"Usage: {sys.argv[0]} <input.pdf> <output.txt>", file=sys.stderr)
         sys.exit(1)
 
-    text = extract_clean_text(sys.argv[1])
+    try:
+        input_pdf = _validated_pdf_path(sys.argv[1])
+        output_txt = _validated_output_path(sys.argv[2])
+        text = extract_clean_text(input_pdf)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+
     if not text:
         print("ERROR: no text extracted", file=sys.stderr)
         sys.exit(1)
 
-    with open(sys.argv[2], "w", encoding="utf-8") as f:
+    with open(output_txt, "w", encoding="utf-8") as f:
         f.write(text)
 
-    print(f"Extracted {len(text):,} chars → {sys.argv[2]}")
+    print(f"Extracted {len(text):,} chars → {output_txt}")
