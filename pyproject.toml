@@ -1,6 +1,6 @@
 [project]
 name = "pdf2audio"
-version = "0.1.10"
+version = "0.1.11"
 description = "Convert PDF documents to audio (opus) using local TTS"
 requires-python = ">=3.11,<3.13"
 dependencies = [
