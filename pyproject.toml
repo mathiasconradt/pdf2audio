@@ -5,6 +5,7 @@ description = "Convert PDF documents to audio (opus) using local TTS"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "kokoro>=0.9.4",
+    "numpy<2.0",
     "pymupdf>=1.27.0",
     "torch>=2.0.0",
     "trafilatura>=2.0.0",
